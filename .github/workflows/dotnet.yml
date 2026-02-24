@@ -79,7 +79,7 @@ jobs:
         fi
     
   reusable_workflow_job:
-    uses: 6268Abhishek/Crud_Web_API/.github/workflows/build-b.yml@main
+    uses: 6268Abhishek/Crud_Web_API/.github/workflows/build-b.yml@master
     with:
       buildError: ${{ needs.build.outputs.error_output }}
       
