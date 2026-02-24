@@ -17,6 +17,7 @@ jobs:
         run: |
           echo "Running build..."
           invalidcommand123
+          
           exit 1
         continue-on-error: true
 
