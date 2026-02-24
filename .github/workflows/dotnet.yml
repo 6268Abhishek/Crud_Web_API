@@ -73,13 +73,19 @@ jobs:
         steps.buildstep.outcome == 'failure' ||
         steps.teststep.outcome == 'failure'
       run: |
-        ERROR_MSG=$(cat error.txt | sed 's/"/\\"/g')
-
-        echo "Sending Error To Build B:"
-        echo "$ERROR_MSG"
-
+        echo "Preparing payload..."
+    
+        ERROR_MSG=$(cat error.txt)
+    
+        jq -n \
+          --arg err "$ERROR_MSG" \
+          '{event_type:"build_failed", client_payload:{error:$err}}' \
+          > payload.json
+    
+        cat payload.json
+    
         curl -X POST \
-        -H "Authorization: Bearer ${{ secrets.TEST_TOKEN }}" \
-        -H "Accept: application/vnd.github+json" \
-        https://api.github.com/repos/${{ github.repository }}/dispatches \ 
-         -d "{\"event_type\":\"build_failed\"}"
+          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github+json" \
+          https://api.github.com/repos/${{ github.repository }}/dispatches \
+          -d @payload.json
