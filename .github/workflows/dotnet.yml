@@ -76,6 +76,13 @@ jobs:
           echo "error_content=No errors" >> $GITHUB_OUTPUT
         fi
 
+
+        - name: Simulate Custom Error
+          run: |
+          echo "CUSTOM TEST ERROR: Dependency XYZ not found" >> error.txt
+          exit 1
+          continue-on-error: true
+
   # -----------------------------
   # Call Reusable Workflow ONLY on failure
   # -----------------------------
