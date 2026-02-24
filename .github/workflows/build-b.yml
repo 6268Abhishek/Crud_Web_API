@@ -1,0 +1,15 @@
+name: Build B
+
+on:
+  repository_dispatch:
+    types: [build_failed]
+
+jobs:
+  receive-error:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Print Error Message
+        run: |
+          echo "Received Error:"
+          echo "${{ github.event.client_payload.error }}"
