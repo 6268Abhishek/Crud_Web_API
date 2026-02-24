@@ -38,7 +38,7 @@ jobs:
     # -----------------------------
     - name: Install Maven Dependencies
       run: |
-        mvn clean install -DskipTests 2> error.txt
+        mvn clean install -DskipTests >> error.txt 2>&1
       continue-on-error: true
 
     # -----------------------------
