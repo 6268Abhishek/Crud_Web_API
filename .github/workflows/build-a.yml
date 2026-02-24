@@ -1,5 +1,4 @@
 name: Build A
-
 on:
   push:
     branches:
