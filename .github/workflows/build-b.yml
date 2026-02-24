@@ -1,4 +1,5 @@
 name: Build B
+
 on:
   workflow_call:
     inputs:
@@ -8,11 +9,13 @@ on:
     secrets:
       personal_access_token:
         required: false
+
 jobs:
-  label:
+  process-error:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/labeler@v6
-        with:
-          repo-token: '${{ secrets.personal_access_token }}'
-          run: echo "${{ inputs.buildError }}"
+      - name: Print received error
+        run: |
+          echo "===== RECEIVED BUILD ERROR ====="
+          echo "${{ inputs.buildError }}"
