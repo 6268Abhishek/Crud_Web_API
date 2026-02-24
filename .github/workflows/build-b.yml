@@ -1,15 +1,18 @@
 name: Build B
-
 on:
-  repository_dispatch:
-    types: [build_failed]
-
+  workflow_call:
+    inputs:
+      buildError:
+        required: true
+        type: string
+    secrets:
+      personal_access_token:
+        required: false
 jobs:
-  receive-error:
+  label:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Print Error Message
-        run: |
-          echo "Received Error:"
-          echo "${{ github.event.client_payload.error }}"
+      - uses: actions/labeler@v6
+        with:
+          repo-token: '${{ secrets.personal_access_token }}'
+          run: echo "${{ inputs.buildError }}"
