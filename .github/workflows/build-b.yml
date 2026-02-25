@@ -69,7 +69,7 @@ jobs:
           string threadId = threadJson.RootElement.GetProperty("id").GetString()!;
           Console.WriteLine($"Thread created: {threadId}");
 
-          // 2. Message bhejo
+          // 2. Message bhejo..
           var msgBody = JsonSerializer.Serialize(new {
               role = "user",
               content = $"Analyze this build error and provide solution:\n\n{buildError}"
