@@ -36,8 +36,6 @@ jobs:
           dotnet new console -n AIAgent --force
 
       - name: Write C# Code
-        env:
-          BUILD_ERROR: ${{ inputs.buildError }}
         run: |
           cat > /tmp/aiagent/AIAgent/Program.cs << 'CSHARP'
           using System;
@@ -61,7 +59,7 @@ jobs:
           Console.WriteLine($"Endpoint: {endpoint}");
           Console.WriteLine($"Agent ID: {agentId}");
 
-          // 1. Thread banao...
+          // 1. Thread banao
           var threadRes = await client.PostAsync(
               $"{baseUrl}/threads?api-version={apiVersion}",
               new StringContent("{}", Encoding.UTF8, "application/json")
@@ -83,24 +81,27 @@ jobs:
           msgRes.EnsureSuccessStatusCode();
           Console.WriteLine("Message sent!");
 
-          // 3. Run karo - full error print karo
+          // 3. Run karo
           var runBody = JsonSerializer.Serialize(new { assistant_id = agentId });
-          Console.WriteLine($"Run Body: {runBody}");
           Console.WriteLine($"Run URL: {baseUrl}/threads/{threadId}/runs?api-version={apiVersion}");
-          
+          Console.WriteLine($"Run Body: {runBody}");
+
           var runRes = await client.PostAsync(
               $"{baseUrl}/threads/{threadId}/runs?api-version={apiVersion}",
               new StringContent(runBody, Encoding.UTF8, "application/json")
           );
 
-          string runResponseBody = await runRes.Content.ReadAsStringAsync();
-          Console.WriteLine($"Run Response Status: {runRes.StatusCode}");
-          Console.WriteLine($"Run Response Body: {runResponseBody}");
+          string runResBody = await runRes.Content.ReadAsStringAsync();
+          Console.WriteLine($"Run Status Code: {runRes.StatusCode}");
+          Console.WriteLine($"Run Response: {runResBody}");
 
           if (!runRes.IsSuccessStatusCode)
           {
               Environment.Exit(1);
           }
+
+          string runId = JsonDocument.Parse(runResBody).RootElement.GetProperty("id").GetString()!;
+          Console.WriteLine($"Run started: {runId}");
 
           // 4. Complete hone tak wait karo
           string status = "";
