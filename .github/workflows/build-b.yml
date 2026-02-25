@@ -58,7 +58,7 @@ jobs:
           using var client = new HttpClient();
           client.DefaultRequestHeaders.Add("api-key", apiKey);
 
-          // 1. Thread banao
+          // 1. Thread banao...
           var threadRes = await client.PostAsync(
               $"{baseUrl}/threads?api-version={apiVersion}",
               new StringContent("{}", Encoding.UTF8, "application/json")
