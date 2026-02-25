@@ -17,6 +17,14 @@ jobs:
     - uses: actions/checkout@v4
 
     # -----------------------------
+    # Create error file
+    # -----------------------------
+    - name: Initialize error file
+      run: |
+        rm -f error.txt
+        touch error.txt
+
+    # -----------------------------
     # Setup .NET
     # -----------------------------
     - name: Setup .NET
@@ -25,7 +33,7 @@ jobs:
         dotnet-version: 8.0.x
 
     # -----------------------------
-    # Setup Java (For Maven)
+    # Setup Java
     # -----------------------------
     - name: Setup Java
       uses: actions/setup-java@v4
@@ -34,40 +42,52 @@ jobs:
         java-version: '17'
 
     # -----------------------------
-    # Run Maven
+    # Setup Python
+    # -----------------------------
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    # -----------------------------
+    # Maven
     # -----------------------------
     - name: Install Maven Dependencies
       run: |
         mvn clean install -DskipTests >> error.txt 2>&1
       continue-on-error: true
+
+    # -----------------------------
+    # Python
+    # -----------------------------
     - name: Install Python Dependencies
-  run: |
-    if [ -f requirements.txt ]; then
-      pip install -r requirements.txt >> error.txt 2>&1
-    else
-      echo "No requirements.txt found" >> error.txt
-    fi
-  continue-on-error: true
+      run: |
+        if [ -f requirements.txt ]; then
+          pip install -r requirements.txt >> error.txt 2>&1
+        else
+          echo "No requirements.txt found" >> error.txt
+        fi
+      continue-on-error: true
 
     # -----------------------------
     # Restore .NET
     # -----------------------------
     - name: Restore
-      run: dotnet restore 2>> error.txt
+      run: dotnet restore >> error.txt 2>&1
       continue-on-error: true
 
     # -----------------------------
     # Build
     # -----------------------------
     - name: Build
-      run: dotnet build --no-restore 2>> error.txt
+      run: dotnet build --no-restore >> error.txt 2>&1
       continue-on-error: true
 
     # -----------------------------
     # Test
     # -----------------------------
     - name: Test
-      run: dotnet test --no-build 2>> error.txt
+      run: dotnet test --no-build >> error.txt 2>&1
       continue-on-error: true
 
     # -----------------------------
