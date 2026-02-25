@@ -40,7 +40,7 @@ jobs:
           from azure.ai.agents import AgentsClient
           from azure.core.credentials import AzureKeyCredential
 
-          client = AIProjectClient(
+          client = AgentsClient(
               endpoint=os.environ["AZURE_AI_ENDPOINT"],
               credential=AzureKeyCredential(os.environ["AZURE_AI_KEY"])
           )
