@@ -1,64 +1,36 @@
 name: .NET CI
-
 on:
   push:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     outputs:
       error_output: ${{ steps.read_error.outputs.error_content }}
-
     steps:
     - uses: actions/checkout@v4
-
-    # -----------------------------
-    # Create error file
-    # -----------------------------
     - name: Initialize error file
       run: |
         rm -f error.txt
         touch error.txt
-
-    # -----------------------------
-    # Setup .NET
-    # -----------------------------
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.x
-    # -----------------------------
-    # Setup Java
-    # -----------------------------
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
-
-    # -----------------------------
-    # Setup Python
-    # -----------------------------
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-
-    # -----------------------------
-    # Maven
-    # -----------------------------
     - name: Install Maven Dependencies
-      run: |
-        mvn clean install -DskipTests >> error.txt 2>&1
+      run: mvn clean install -DskipTests >> error.txt 2>&1
       continue-on-error: true
-
-    # -----------------------------
-    # Python
-    # -----------------------------
     - name: Install Python Dependencies
       run: |
         if [ -f requirements.txt ]; then
@@ -67,31 +39,15 @@ jobs:
           echo "No requirements.txt found" >> error.txt
         fi
       continue-on-error: true
-
-    # -----------------------------
-    # Restore .NET
-    # -----------------------------
     - name: Restore
       run: dotnet restore >> error.txt 2>&1
       continue-on-error: true
-
-    # -----------------------------
-    # Build
-    # -----------------------------
     - name: Build
       run: dotnet build --no-restore >> error.txt 2>&1
       continue-on-error: true
-
-    # -----------------------------
-    # Test
-    # -----------------------------
     - name: Test
       run: dotnet test --no-build >> error.txt 2>&1
       continue-on-error: true
-
-    # -----------------------------
-    # Read Error File
-    # -----------------------------
     - name: Read error file
       id: read_error
       run: |
@@ -103,12 +59,13 @@ jobs:
           echo "error_content=No errors" >> $GITHUB_OUTPUT
         fi
 
-  # -----------------------------
-  # Call Reusable Workflow ONLY on failure
-  # -----------------------------
   reusable_workflow_job:
     needs: build
     if: ${{ needs.build.outputs.error_output != 'No errors' }}
     uses: 6268Abhishek/Crud_Web_API/.github/workflows/build-b.yml@master
     with:
       buildError: ${{ needs.build.outputs.error_output }}
+    secrets:                                                    # ← YEH ADD KARO
+      AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
+      AZURE_AI_KEY: ${{ secrets.AZURE_AI_KEY }}
+      AGENT_ID: ${{ secrets.AGENT_ID }}
