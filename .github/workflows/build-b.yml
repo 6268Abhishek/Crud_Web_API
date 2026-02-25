@@ -58,6 +58,9 @@ jobs:
           using var client = new HttpClient();
           client.DefaultRequestHeaders.Add("api-key", apiKey);
 
+          Console.WriteLine($"Endpoint: {endpoint}");
+          Console.WriteLine($"Agent ID: {agentId}");
+
           // 1. Thread banao...
           var threadRes = await client.PostAsync(
               $"{baseUrl}/threads?api-version={apiVersion}",
@@ -81,7 +84,7 @@ jobs:
           Console.WriteLine("Message sent!");
 
           // 3. Run karo
-          var runBody = JsonSerializer.Serialize(new { assistant_id = agentId });
+          var runBody = JsonSerializer.Serialize(new { agent_id = agentId });
           var runRes = await client.PostAsync(
               $"{baseUrl}/threads/{threadId}/runs?api-version={apiVersion}",
               new StringContent(runBody, Encoding.UTF8, "application/json")
