@@ -14,6 +14,7 @@ on:
         required: true
       AGENT_ID:
         required: true
+
 jobs:
   process-error:
     runs-on: ubuntu-latest
@@ -22,107 +23,101 @@ jobs:
         run: |
           echo "===== RECEIVED BUILD ERROR ====="
           echo "${{ inputs.buildError }}"
-      - name: Setup Python
-        uses: actions/setup-python@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: pip install azure-ai-agents azure-core
-      - name: Send error to AI Agent
+          dotnet-version: '8.0.x'
+
+      - name: Create C# Project
+        run: |
+          mkdir -p /tmp/aiagent
+          cd /tmp/aiagent
+          dotnet new console -n AIAgent --force
+
+      - name: Write C# Code
         env:
-          AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
-          AZURE_AI_KEY: ${{ secrets.AZURE_AI_KEY }}
-          AGENT_ID: ${{ secrets.AGENT_ID }}
           BUILD_ERROR: ${{ inputs.buildError }}
         run: |
-          python - <<'EOF'
-          import os
-          import requests
-          import time
+          cat > /tmp/aiagent/AIAgent/Program.cs << 'CSHARP'
+          using System;
+          using System.Net.Http;
+          using System.Text;
+          using System.Text.Json;
+          using System.Threading;
+          using System.Threading.Tasks;
 
-          endpoint = os.environ["AZURE_AI_ENDPOINT"].rstrip("/")
-          api_key = os.environ["AZURE_AI_KEY"]
-          build_error = os.environ["BUILD_ERROR"]
-          agent_name = "ErrorDetectAgent"
+          string endpoint = Environment.GetEnvironmentVariable("AZURE_AI_ENDPOINT")!.TrimEnd('/');
+          string agentId = Environment.GetEnvironmentVariable("AGENT_ID")!;
+          string buildError = Environment.GetEnvironmentVariable("BUILD_ERROR")!;
+          string apiKey = Environment.GetEnvironmentVariable("AZURE_AI_KEY")!;
 
-          headers = {
-              "Authorization": f"Bearer {api_key}",
-              "Content-Type": "application/json"
+          string baseUrl = $"{endpoint}/openai";
+          string apiVersion = "2024-05-01-preview";
+
+          using var client = new HttpClient();
+          client.DefaultRequestHeaders.Add("api-key", apiKey);
+
+          // 1. Thread banao
+          var threadRes = await client.PostAsync(
+              $"{baseUrl}/threads?api-version={apiVersion}",
+              new StringContent("{}", Encoding.UTF8, "application/json")
+          );
+          threadRes.EnsureSuccessStatusCode();
+          var threadJson = JsonDocument.Parse(await threadRes.Content.ReadAsStringAsync());
+          string threadId = threadJson.RootElement.GetProperty("id").GetString()!;
+          Console.WriteLine($"Thread created: {threadId}");
+
+          // 2. Message bhejo
+          var msgBody = JsonSerializer.Serialize(new {
+              role = "user",
+              content = $"Analyze this build error and provide solution:\n\n{buildError}"
+          });
+          var msgRes = await client.PostAsync(
+              $"{baseUrl}/threads/{threadId}/messages?api-version={apiVersion}",
+              new StringContent(msgBody, Encoding.UTF8, "application/json")
+          );
+          msgRes.EnsureSuccessStatusCode();
+          Console.WriteLine("Message sent!");
+
+          // 3. Run karo
+          var runBody = JsonSerializer.Serialize(new { assistant_id = agentId });
+          var runRes = await client.PostAsync(
+              $"{baseUrl}/threads/{threadId}/runs?api-version={apiVersion}",
+              new StringContent(runBody, Encoding.UTF8, "application/json")
+          );
+          runRes.EnsureSuccessStatusCode();
+          var runJson = JsonDocument.Parse(await runRes.Content.ReadAsStringAsync());
+          string runId = runJson.RootElement.GetProperty("id").GetString()!;
+          Console.WriteLine($"Run started: {runId}");
+
+          // 4. Complete hone tak wait karo
+          string status = "";
+          for (int i = 0; i < 30; i++)
+          {
+              Thread.Sleep(3000);
+              var statusRes = await client.GetAsync(
+                  $"{baseUrl}/threads/{threadId}/runs/{runId}?api-version={apiVersion}"
+              );
+              var statusJson = JsonDocument.Parse(await statusRes.Content.ReadAsStringAsync());
+              status = statusJson.RootElement.GetProperty("status").GetString()!;
+              Console.WriteLine($"Status: {status}");
+              if (status == "completed") break;
+              if (status == "failed" || status == "cancelled" || status == "expired")
+              {
+                  Console.WriteLine("Run failed!");
+                  Environment.Exit(1);
+              }
           }
 
-          # 1. Agent ID lo by name
-          agents_res = requests.get(
-              f"{endpoint}/agents?api-version=2025-05-15-preview",
-              headers=headers
-          )
-          agents_res.raise_for_status()
-          
-          agent_id = None
-          for agent in agents_res.json().get("value", []):
-              if agent["name"] == agent_name:
-                  agent_id = agent["id"]
-                  break
-
-          if not agent_id:
-              print(f"Agent '{agent_name}' nahi mila!")
-              exit(1)
-
-          print(f"Agent found: {agent_id}")
-
-          # 2. Thread banao
-          thread_res = requests.post(
-              f"{endpoint}/threads?api-version=2025-05-15-preview",
-              headers=headers,
-              json={}
-          )
-          thread_res.raise_for_status()
-          thread_id = thread_res.json()["id"]
-          print(f"Thread: {thread_id}")
-
-          # 3. Message bhejo
-          requests.post(
-              f"{endpoint}/threads/{thread_id}/messages?api-version=2025-05-15-preview",
-              headers=headers,
-              json={
-                  "role": "user",
-                  "content": f"Yeh build error analyze karo aur solution do:\n\n{build_error}"
-              }
-          ).raise_for_status()
-          print("Message sent!")
-
-          # 4. Run karo
-          run_res = requests.post(
-              f"{endpoint}/threads/{thread_id}/runs?api-version=2025-05-15-preview",
-              headers=headers,
-              json={"assistant_id": agent_id}
-          )
-          run_res.raise_for_status()
-          run_id = run_res.json()["id"]
-          print(f"Run: {run_id}")
-
-          # 5. Wait karo
-          for i in range(30):
-              time.sleep(3)
-              status_res = requests.get(
-                  f"{endpoint}/threads/{thread_id}/runs/{run_id}?api-version=2025-05-15-preview",
-                  headers=headers
-              )
-              status = status_res.json()["status"]
-              print(f"Status: {status}")
-              if status == "completed":
-                  break
-              elif status in ["failed", "cancelled", "expired"]:
-                  print("Run failed:", status_res.json())
-                  exit(1)
-
-          # 6. Response lo
-          msgs_res = requests.get(
-              f"{endpoint}/threads/{thread_id}/messages?api-version=2025-05-15-preview",
-              headers=headers
-          )
-          for msg in msgs_res.json()["data"]:
-              if msg["role"] == "assistant":
-                  print("\n===== AI AGENT RESPONSE =====")
-                  print(msg["content"][0]["text"]["value"])
-                  break
-          EOF
+          // 5. Response lo
+          var msgsRes = await client.GetAsync(
+              $"{baseUrl}/threads/{threadId}/messages?api-version={apiVersion}"
+          );
+          msgsRes.EnsureSuccessStatusCode();
+          var msgsJson = JsonDocument.Parse(await msgsRes.Content.ReadAsStringAsync());
+          foreach (var msg in msgsJson.RootElement.GetProperty("data").EnumerateArray())
+          {
+              if (msg.GetProperty("role").GetString() == "assistant")
+              {
+                  Console.WriteLine("\n===== AI AGENT RESPONSE
