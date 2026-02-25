@@ -54,13 +54,13 @@ jobs:
 
           thread = client.threads.create()
 
-          client.agents.messages.create(
+          client.messages.create(
               thread_id=thread.id,
               role="user",
               content=prompt
           )
 
-          run = client.agents.runs.create_and_poll(
+          run = client.runs.create_and_poll(
               thread_id=thread.id,
               agent_id=os.environ["AGENT_ID"]
           )
@@ -68,7 +68,7 @@ jobs:
           print(f"Run Status: {run.status}")
 
           if run.status == "completed":
-              messages = client.agents.messages.list(thread_id=thread.id)
+              messages = client.messages.list(thread_id=thread.id)
               for msg in messages:
                   if msg.role == "assistant":
                       print("\n===== AI AGENT RESPONSE =====")
