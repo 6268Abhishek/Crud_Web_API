@@ -40,11 +40,14 @@ jobs:
       run: |
         mvn clean install -DskipTests >> error.txt 2>&1
       continue-on-error: true
-      
-    - name: Setup Python
-      uses: actions/setup-python@v5 >> error.txt 2>&1
-      with:
-       python-version: '3.11'
+    - name: Install Python Dependencies
+  run: |
+    if [ -f requirements.txt ]; then
+      pip install -r requirements.txt >> error.txt 2>&1
+    else
+      echo "No requirements.txt found" >> error.txt
+    fi
+  continue-on-error: true
 
     # -----------------------------
     # Restore .NET
