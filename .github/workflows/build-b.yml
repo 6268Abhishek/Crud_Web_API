@@ -83,16 +83,24 @@ jobs:
           msgRes.EnsureSuccessStatusCode();
           Console.WriteLine("Message sent!");
 
-          // 3. Run karo
-          var runBody = JsonSerializer.Serialize(new { agent_id = agentId });
+          // 3. Run karo - full error print karo
+          var runBody = JsonSerializer.Serialize(new { assistant_id = agentId });
+          Console.WriteLine($"Run Body: {runBody}");
+          Console.WriteLine($"Run URL: {baseUrl}/threads/{threadId}/runs?api-version={apiVersion}");
+          
           var runRes = await client.PostAsync(
               $"{baseUrl}/threads/{threadId}/runs?api-version={apiVersion}",
               new StringContent(runBody, Encoding.UTF8, "application/json")
           );
-          runRes.EnsureSuccessStatusCode();
-          var runJson = JsonDocument.Parse(await runRes.Content.ReadAsStringAsync());
-          string runId = runJson.RootElement.GetProperty("id").GetString()!;
-          Console.WriteLine($"Run started: {runId}");
+
+          string runResponseBody = await runRes.Content.ReadAsStringAsync();
+          Console.WriteLine($"Run Response Status: {runRes.StatusCode}");
+          Console.WriteLine($"Run Response Body: {runResponseBody}");
+
+          if (!runRes.IsSuccessStatusCode)
+          {
+              Environment.Exit(1);
+          }
 
           // 4. Complete hone tak wait karo
           string status = "";
