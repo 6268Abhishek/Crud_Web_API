@@ -1,5 +1,4 @@
 name: Build B
-
 on:
   workflow_call:
     inputs:
@@ -9,13 +8,77 @@ on:
     secrets:
       personal_access_token:
         required: false
+      AZURE_AI_ENDPOINT:
+        required: true
+      AZURE_AI_KEY:
+        required: true
+      AGENT_ID:
+        required: true
 
 jobs:
   process-error:
     runs-on: ubuntu-latest
-
     steps:
       - name: Print received error
         run: |
           echo "===== RECEIVED BUILD ERROR ====="
           echo "${{ inputs.buildError }}"
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install azure-ai-projects azure-core
+
+      - name: Send error to AI Agent
+        env:
+          AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
+          AZURE_AI_KEY: ${{ secrets.AZURE_AI_KEY }}
+          AGENT_ID: ${{ secrets.AGENT_ID }}
+          BUILD_ERROR: ${{ inputs.buildError }}
+        run: |
+          python - <<'EOF'
+          import os
+          from azure.ai.projects import AIProjectClient
+          from azure.core.credentials import AzureKeyCredential
+
+          client = AIProjectClient(
+              endpoint=os.environ["AZURE_AI_ENDPOINT"],
+              credential=AzureKeyCredential(os.environ["AZURE_AI_KEY"])
+          )
+
+          build_error = os.environ["BUILD_ERROR"]
+
+          prompt = f"""
+          Yeh GitHub Actions build error hai, analyze karo aur solution do:
+
+          {build_error}
+          """
+
+          thread = client.agents.create_thread()
+
+          client.agents.create_message(
+              thread_id=thread.id,
+              role="user",
+              content=prompt
+          )
+
+          run = client.agents.create_and_process_run(
+              thread_id=thread.id,
+              agent_id=os.environ["AGENT_ID"]
+          )
+
+          print(f"Run Status: {run.status}")
+
+          if run.status == "completed":
+              messages = client.agents.list_messages(thread_id=thread.id)
+              for msg in messages.data:
+                  if msg.role == "assistant":
+                      print("\n===== AI AGENT RESPONSE =====")
+                      print(msg.content[0].text.value)
+                      break
+          else:
+              print("Agent run failed:", run.last_error)
+          EOF
