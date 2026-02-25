@@ -52,7 +52,7 @@ jobs:
           {build_error}
           """
 
-          thread = client.agents.threads.create()
+          thread = client.threads.create()
 
           client.agents.messages.create(
               thread_id=thread.id,
