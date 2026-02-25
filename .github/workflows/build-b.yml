@@ -37,43 +37,92 @@ jobs:
         run: |
           python - <<'EOF'
           import os
-          from azure.ai.agents import AgentsClient
-          from azure.core.credentials import AzureKeyCredential
+          import requests
+          import time
 
-          client = AgentsClient(
-              endpoint=os.environ["AZURE_AI_ENDPOINT"],
-              credential=AzureKeyCredential(os.environ["AZURE_AI_KEY"])
-          )
-
+          endpoint = os.environ["AZURE_AI_ENDPOINT"].rstrip("/")
+          api_key = os.environ["AZURE_AI_KEY"]
           build_error = os.environ["BUILD_ERROR"]
+          agent_name = "ErrorDetectAgent"
 
-          prompt = f"""
-          Yeh GitHub Actions build error hai, analyze karo aur solution do:
-          {build_error}
-          """
+          headers = {
+              "Authorization": f"Bearer {api_key}",
+              "Content-Type": "application/json"
+          }
 
-          thread = client.threads.create()
-
-          client.messages.create(
-              thread_id=thread.id,
-              role="user",
-              content=prompt
+          # 1. Agent ID lo by name
+          agents_res = requests.get(
+              f"{endpoint}/agents?api-version=2025-05-15-preview",
+              headers=headers
           )
+          agents_res.raise_for_status()
+          
+          agent_id = None
+          for agent in agents_res.json().get("value", []):
+              if agent["name"] == agent_name:
+                  agent_id = agent["id"]
+                  break
 
-          run = client.runs.create_and_poll(
-              thread_id=thread.id,
-              agent_id=os.environ["AGENT_ID"]
+          if not agent_id:
+              print(f"Agent '{agent_name}' nahi mila!")
+              exit(1)
+
+          print(f"Agent found: {agent_id}")
+
+          # 2. Thread banao
+          thread_res = requests.post(
+              f"{endpoint}/threads?api-version=2025-05-15-preview",
+              headers=headers,
+              json={}
           )
+          thread_res.raise_for_status()
+          thread_id = thread_res.json()["id"]
+          print(f"Thread: {thread_id}")
 
-          print(f"Run Status: {run.status}")
+          # 3. Message bhejo
+          requests.post(
+              f"{endpoint}/threads/{thread_id}/messages?api-version=2025-05-15-preview",
+              headers=headers,
+              json={
+                  "role": "user",
+                  "content": f"Yeh build error analyze karo aur solution do:\n\n{build_error}"
+              }
+          ).raise_for_status()
+          print("Message sent!")
 
-          if run.status == "completed":
-              messages = client.messages.list(thread_id=thread.id)
-              for msg in messages:
-                  if msg.role == "assistant":
-                      print("\n===== AI AGENT RESPONSE =====")
-                      print(msg.content[0].text.value)
-                      break
-          else:
-              print("Agent run failed:", run.last_error)
+          # 4. Run karo
+          run_res = requests.post(
+              f"{endpoint}/threads/{thread_id}/runs?api-version=2025-05-15-preview",
+              headers=headers,
+              json={"assistant_id": agent_id}
+          )
+          run_res.raise_for_status()
+          run_id = run_res.json()["id"]
+          print(f"Run: {run_id}")
+
+          # 5. Wait karo
+          for i in range(30):
+              time.sleep(3)
+              status_res = requests.get(
+                  f"{endpoint}/threads/{thread_id}/runs/{run_id}?api-version=2025-05-15-preview",
+                  headers=headers
+              )
+              status = status_res.json()["status"]
+              print(f"Status: {status}")
+              if status == "completed":
+                  break
+              elif status in ["failed", "cancelled", "expired"]:
+                  print("Run failed:", status_res.json())
+                  exit(1)
+
+          # 6. Response lo
+          msgs_res = requests.get(
+              f"{endpoint}/threads/{thread_id}/messages?api-version=2025-05-15-preview",
+              headers=headers
+          )
+          for msg in msgs_res.json()["data"]:
+              if msg["role"] == "assistant":
+                  print("\n===== AI AGENT RESPONSE =====")
+                  print(msg["content"][0]["text"]["value"])
+                  break
           EOF
