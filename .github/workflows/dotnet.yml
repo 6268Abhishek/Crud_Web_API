@@ -40,6 +40,11 @@ jobs:
       run: |
         mvn clean install -DskipTests >> error.txt 2>&1
       continue-on-error: true
+      
+    - name: Setup Python
+      uses: actions/setup-python@v5 >> error.txt 2>&1
+      with:
+       python-version: '3.11'
 
     # -----------------------------
     # Restore .NET
