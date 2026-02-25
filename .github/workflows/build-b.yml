@@ -14,7 +14,6 @@ on:
         required: true
       AGENT_ID:
         required: true
-
 jobs:
   process-error:
     runs-on: ubuntu-latest
@@ -23,15 +22,12 @@ jobs:
         run: |
           echo "===== RECEIVED BUILD ERROR ====="
           echo "${{ inputs.buildError }}"
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
       - name: Install dependencies
         run: pip install azure-ai-projects azure-core
-
       - name: Send error to AI Agent
         env:
           AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
@@ -53,19 +49,18 @@ jobs:
 
           prompt = f"""
           Yeh GitHub Actions build error hai, analyze karo aur solution do:
-
           {build_error}
           """
 
-          thread = client.agents.create_thread()
+          thread = client.agents.threads.create()
 
-          client.agents.create_message(
+          client.agents.messages.create(
               thread_id=thread.id,
               role="user",
               content=prompt
           )
 
-          run = client.agents.create_and_process_run(
+          run = client.agents.runs.create_and_poll(
               thread_id=thread.id,
               agent_id=os.environ["AGENT_ID"]
           )
@@ -73,8 +68,8 @@ jobs:
           print(f"Run Status: {run.status}")
 
           if run.status == "completed":
-              messages = client.agents.list_messages(thread_id=thread.id)
-              for msg in messages.data:
+              messages = client.agents.messages.list(thread_id=thread.id)
+              for msg in messages:
                   if msg.role == "assistant":
                       print("\n===== AI AGENT RESPONSE =====")
                       print(msg.content[0].text.value)
