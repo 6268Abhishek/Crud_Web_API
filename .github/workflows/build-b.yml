@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install azure-ai-projects azure-core
+        run: pip install azure-ai-agents azure-core
       - name: Send error to AI Agent
         env:
           AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
@@ -37,7 +37,7 @@ jobs:
         run: |
           python - <<'EOF'
           import os
-          from azure.ai.projects import AIProjectClient
+          from azure.ai.agents import AgentsClient
           from azure.core.credentials import AzureKeyCredential
 
           client = AIProjectClient(
