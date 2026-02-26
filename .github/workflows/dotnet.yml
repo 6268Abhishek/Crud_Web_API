@@ -66,9 +66,10 @@ jobs:
     uses: 6268Abhishek/Crud_Web_API/.github/workflows/build-b.yml@master
     with:
       buildError: ${{ needs.build.outputs.error_output }}
-    secrets:                                                    # ← YEH ADD KARO
+    secrets:
       AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
       AGENT_ID: ${{ secrets.AGENT_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      personal_access_token: ${{ secrets.personal_access_token }}
