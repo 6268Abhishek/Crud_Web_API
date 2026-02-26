@@ -70,3 +70,6 @@ jobs:
       AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
       AZURE_AI_KEY: ${{ secrets.AZURE_AI_KEY }}
       AGENT_ID: ${{ secrets.AGENT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
