@@ -38,7 +38,7 @@ jobs:
           pip install -r requirements.txt >> error.txt 2>&1
         else
           echo "No requirements.txt found" >> error.txt
-        fi
+        fi 
       continue-on-error: true
     - name: Restore
       run: dotnet restore >> error.txt 2>&1
