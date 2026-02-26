@@ -49,7 +49,7 @@ jobs:
           import os
           from azure.identity import ClientSecretCredential
           from azure.ai.projects import AIProjectClient
-          from azure.ai.projects.models import ListSortOrder
+          # from azure.ai.projects.models import ListSortOrder
 
           credential = ClientSecretCredential(
               tenant_id=os.environ["AZURE_TENANT_ID"],
@@ -85,7 +85,7 @@ jobs:
           else:
               messages = project.agents.messages.list(
                   thread_id=thread.id,
-                  order=ListSortOrder.ASCENDING
+                  # order=ListSortOrder.ASCENDING
               )
               print("\n===== AI AGENT RESPONSE =====")
               for message in messages:
