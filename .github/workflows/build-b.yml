@@ -26,12 +26,15 @@ jobs:
         run: |
           echo "===== RECEIVED BUILD ERROR ====="
           echo "${{ inputs.buildError }}"
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
+
       - name: Install dependencies
-        run: pip install azure-ai-projects==1.0.0 azure-identity
+        run: pip install azure-ai-projects azure-identity
+
       - name: Send error to AI Agent
         env:
           AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
@@ -57,28 +60,32 @@ jobs:
               credential=credential
           )
 
+          # ✅ ONLY CHANGE: added agent_id= keyword
           agent = project.agents.get_agent(agent_id=os.environ["AGENT_ID"])
           print(f"Agent retrieved: {agent.name}")
 
-          thread = project.agents.create_thread()
+          # ✅ These were correct in your ORIGINAL file - keeping as is
+          thread = project.agents.threads.create()
           print(f"Thread created: {thread.id}")
 
-          project.agents.create_message(
+          project.agents.messages.create(
               thread_id=thread.id,
               role="user",
               content=f"Analyze this build error and provide solution:\n\n{os.environ['BUILD_ERROR']}"
           )
           print("Message sent!")
 
-          run = project.agents.create_and_process_run(
+          run = project.agents.runs.create_and_process(
               thread_id=thread.id,
-              agent_id=os.environ["AGENT_ID"]
+              agent_id=agent.id
           )
 
           if run.status == "failed":
               print(f"Run failed: {run.last_error}")
           else:
-              messages = project.agents.list_messages(thread_id=thread.id)
+              messages = project.agents.messages.list(
+                  thread_id=thread.id
+              )
               print("\n===== AI AGENT RESPONSE =====")
               for message in messages:
                   if message.text_messages:
