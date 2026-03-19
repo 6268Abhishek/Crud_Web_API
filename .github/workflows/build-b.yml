@@ -8,24 +8,35 @@ on:
     secrets:
       personal_access_token:
         required: false
-      AZURE_AI_ENDPOINT:
+      GCP_PROJECT_ID:
         required: true
-      AZURE_CLIENT_ID:
+      GCP_LOCATION:
         required: true
-      AZURE_CLIENT_SECRET:
+      GCP_WORKLOAD_IDENTITY_PROVIDER:
         required: true
-      AZURE_TENANT_ID:
+      GCP_SERVICE_ACCOUNT:
         required: true
-      AGENT_ID:
-        required: true
+
 jobs:
   process-error:
     runs-on: ubuntu-latest
+
+    # ✅ Required for OIDC token exchange
+    permissions:
+      id-token: write
+      contents: read
+
     steps:
       - name: Print received error
         run: |
           echo "===== RECEIVED BUILD ERROR ====="
           echo "${{ inputs.buildError }}"
+
+      - name: Authenticate to GCP via Workload Identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -33,61 +44,44 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        # ✅ SIRF YAHI EK CHANGE HAI - version pin kiya
-        run: pip install azure-ai-projects==1.0.0b11 azure-identity
+        run: pip install google-cloud-aiplatform
 
-      - name: Send error to AI Agent
+      - name: Send error to Vertex AI (Gemini)
         env:
-          AZURE_AI_ENDPOINT: ${{ secrets.AZURE_AI_ENDPOINT }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AGENT_ID: ${{ secrets.AGENT_ID }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_LOCATION: ${{ secrets.GCP_LOCATION }}
           BUILD_ERROR: ${{ inputs.buildError }}
         run: |
           python - <<'EOF'
           import os
-          from azure.identity import ClientSecretCredential
-          from azure.ai.projects import AIProjectClient
+          import vertexai
+          from vertexai.generative_models import GenerativeModel
 
-          credential = ClientSecretCredential(
-              tenant_id=os.environ["AZURE_TENANT_ID"],
-              client_id=os.environ["AZURE_CLIENT_ID"],
-              client_secret=os.environ["AZURE_CLIENT_SECRET"]
+          # No manual auth needed — google-github-actions/auth step
+          # already set up Application Default Credentials (ADC)
+
+          vertexai.init(
+              project=os.environ["GCP_PROJECT_ID"],
+              location=os.environ["GCP_LOCATION"],
           )
 
-          project = AIProjectClient(
-              endpoint=os.environ["AZURE_AI_ENDPOINT"],
-              credential=credential
-          )
+          model = GenerativeModel("gemini-2.0-flash-001")
 
-          agent = project.agents.get_agent(os.environ["AGENT_ID"])
-          print(f"Agent retrieved: {agent.name}")
+          build_error = os.environ["BUILD_ERROR"]
 
-          thread = project.agents.threads.create()
-          print(f"Thread created: {thread.id}")
+          prompt = f"""You are a senior DevOps and software engineer assistant.
+          Analyze the following CI/CD build error and provide:
+          1. Root cause analysis
+          2. Step-by-step fix
+          3. How to prevent it in future
 
-          project.agents.messages.create(
-              thread_id=thread.id,
-              role="user",
-              content=f"Analyze this build error and provide solution:\n\n{os.environ['BUILD_ERROR']}"
-          )
-          print("Message sent!")
+          Build Error:
+          {build_error}
+          """
 
-          run = project.agents.runs.create_and_process(
-              thread_id=thread.id,
-              agent_id=agent.id
-          )
+          print("Sending error to Gemini for analysis...")
+          response = model.generate_content(prompt)
 
-          if run.status == "failed":
-              print(f"Run failed: {run.last_error}")
-          else:
-              messages = project.agents.messages.list(
-                  thread_id=thread.id,
-              )
-              print("\n===== AI AGENT RESPONSE =====")
-              for message in messages:
-                  if message.text_messages:
-                      for text in message.text_messages:
-                          print(text.text.value)
+          print("\n===== AI AGENT RESPONSE =====")
+          print(response.text)
           EOF
