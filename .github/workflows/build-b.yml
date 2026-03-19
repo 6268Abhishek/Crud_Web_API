@@ -65,7 +65,7 @@ jobs:
               location=os.environ["GCP_LOCATION"],
           )
 
-          model = GenerativeModel("gemini-2.0-flash-001")
+          model = GenerativeModel("gemini-1.5-flash")
 
           build_error = os.environ["BUILD_ERROR"]
 
