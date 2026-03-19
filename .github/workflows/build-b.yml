@@ -34,7 +34,7 @@ jobs:
           from google import genai
           from google.genai import types
 
-          client = genai.Client(api_key=os.environ["GOOGLE_AI_API_KEY"])
+          client = genai.Client(api_key="AIzaSyAf8KAkZNXN6oVucuj49OJW8xlbiR4z-PY")
 
           build_error = os.environ["BUILD_ERROR"]
 
