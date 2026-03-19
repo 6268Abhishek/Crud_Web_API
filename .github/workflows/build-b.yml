@@ -20,8 +20,6 @@ on:
 jobs:
   process-error:
     runs-on: ubuntu-latest
-
-    # ✅ Required for OIDC token exchange
     permissions:
       id-token: write
       contents: read
@@ -44,7 +42,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install google-cloud-aiplatform
+        run: pip install google-genai google-auth
 
       - name: Send error to Vertex AI (Gemini)
         env:
@@ -54,18 +52,22 @@ jobs:
         run: |
           python - <<'EOF'
           import os
-          import vertexai
-          from vertexai.generative_models import GenerativeModel
+          import google.auth
+          import google.auth.transport.requests
+          from google import genai
+          from google.genai import types
 
-          # No manual auth needed — google-github-actions/auth step
-          # already set up Application Default Credentials (ADC)
+          # Refresh ADC credentials set up by google-github-actions/auth
+          credentials, project = google.auth.default(
+              scopes=["https://www.googleapis.com/auth/cloud-platform"]
+          )
+          credentials.refresh(google.auth.transport.requests.Request())
 
-          vertexai.init(
+          client = genai.Client(
+              vertexai=True,
               project=os.environ["GCP_PROJECT_ID"],
               location=os.environ["GCP_LOCATION"],
           )
-
-          model = GenerativeModel("gemini-1.5-flash")
 
           build_error = os.environ["BUILD_ERROR"]
 
@@ -80,7 +82,15 @@ jobs:
           """
 
           print("Sending error to Gemini for analysis...")
-          response = model.generate_content(prompt)
+
+          response = client.models.generate_content(
+              model="gemini-2.0-flash",
+              contents=prompt,
+              config=types.GenerateContentConfig(
+                  temperature=0.3,
+                  max_output_tokens=1500,
+              )
+          )
 
           print("\n===== AI AGENT RESPONSE =====")
           print(response.text)
