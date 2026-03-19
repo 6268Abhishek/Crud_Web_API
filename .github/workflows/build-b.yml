@@ -10,24 +10,36 @@ on:
         required: false
       GOOGLE_AI_API_KEY:
         required: true
-
 jobs:
   process-error:
     runs-on: ubuntu-latest
-
     steps:
       - name: Print received error
         run: |
           echo "===== RECEIVED BUILD ERROR ====="
           echo "${{ inputs.buildError }}"
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
       - name: Install dependencies
         run: pip install google-genai
+
+      - name: List available Gemini models
+        env:
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+        run: |
+          python - <<'EOF'
+          import os
+          from google import genai
+
+          client = genai.Client(api_key=os.environ["GOOGLE_AI_API_KEY"])
+
+          print("===== AVAILABLE GEMINI MODELS =====")
+          for model in client.models.list():
+              if "gemini" in model.name.lower():
+                  print(model.name)
+          EOF
 
       - name: Send error to Gemini
         env:
@@ -55,8 +67,35 @@ jobs:
 
           print("Sending error to Gemini for analysis...")
 
+          # Available models list se sahi model pick karega
+          available_models = [m.name for m in client.models.list() if "gemini" in m.name.lower()]
+          print(f"Trying models: {available_models}")
+
+          # Priority order mein try karega
+          preferred = [
+              "models/gemini-2.0-flash",
+              "models/gemini-2.0-flash-lite",
+              "models/gemini-1.5-flash",
+              "models/gemini-1.5-pro",
+          ]
+
+          model_to_use = None
+          for p in preferred:
+              if p in available_models:
+                  model_to_use = p
+                  break
+
+          if not model_to_use:
+              model_to_use = available_models[0] if available_models else None
+
+          if not model_to_use:
+              print("No Gemini models available!")
+              exit(1)
+
+          print(f"Using model: {model_to_use}")
+
           response = client.models.generate_content(
-             model="gemini-exp-1206",
+              model=model_to_use,
               contents=prompt,
               config=types.GenerateContentConfig(
                   temperature=0.3,
