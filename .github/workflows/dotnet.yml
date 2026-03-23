@@ -49,6 +49,15 @@ jobs:
     - name: Test
       run: dotnet test --no-build >> error.txt 2>&1
       continue-on-error: true
+
+    # ✅ Intentional error step — Gemini analysis trigger karne ke liye
+    - name: Force error for AI analysis
+      run: |
+        echo "ERROR: Intentional test error triggered at $(date)" >> error.txt
+        echo "FAILED: This is a dummy build failure to test Gemini AI analysis pipeline." >> error.txt
+        echo "Exception: NullReferenceException at Program.cs line 42" >> error.txt
+      continue-on-error: true
+
     - name: Read error file
       id: read_error
       run: |
