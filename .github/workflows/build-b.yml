@@ -55,7 +55,7 @@ jobs:
               contents=prompt,
               config=types.GenerateContentConfig(
                   temperature=0.3,
-                  max_output_tokens=1500,
+                  max_output_tokens=15000,
               )
           )
 
