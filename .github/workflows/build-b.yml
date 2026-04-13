@@ -1,6 +1,14 @@
 name: AI Self-Healing Pipeline
  
 on:
+  workflow_call:
+    inputs:
+      buildError:
+        required: true
+        type: string
+    secrets:
+      GOOGLE_AI_API_KEY:
+        required: true
   push:
     branches:
       - main
