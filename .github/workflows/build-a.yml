@@ -16,7 +16,15 @@ jobs:
         id: buildstep
         run: |
           echo "Running build..."
+          
+          # Existing error
           echo "invalidcommand123" > error.txt
+          
+          # ✅ Added custom error message
+          echo "ERROR: Build failed due to invalid command execution" >> error.txt
+          echo "Exception: CommandNotFoundException - invalidcommand123 not recognized" >> error.txt
+          echo "Timestamp: $(date)" >> error.txt
+          
           invalidcommand123 || true
           exit 1
         continue-on-error: true
