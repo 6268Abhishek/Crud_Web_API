@@ -136,174 +136,174 @@ jobs:
 
           prompt = f"""You are a senior DevOps and CI/CD engineer.
 
-A GitHub Actions workflow has failed. You are given:
-1. The last {log_lines} lines of the full job log
-2. All workflow YAML files in the repository
-
-Your tasks:
-- Identify the exact root cause from the log
-- Identify which workflow file is failing
-- Return a corrected version of that workflow YAML
-- Flag any other files (Dockerfile, package.json, requirements.txt etc.) that may also need changes
-
-## Last {log_lines} lines of job log:
-```
-{trimmed_log}
-```
-
-## Current workflow files:
-{workflow_context}
-
-Return ONLY a valid JSON object with exactly these keys. No markdown fences, no explanation outside the JSON:
-{{
-  "failing_workflow_file": "filename only, e.g. build-b.yml",
-  "root_cause": "One paragraph — exact cause identified from the log",
-  "fix_summary": "What you changed in the YAML and why",
-  "fixed_yaml": "The complete corrected YAML as a string",
-  "other_file_suggestions": [
-    {{
-      "file": "relative path e.g. Dockerfile",
-      "issue": "what is wrong",
-      "suggested_fix": "exact change to make"
-    }}
-  ],
-  "prevention": "How to prevent this class of failure in future"
-}}
-
-If no other files need changes, return an empty array for other_file_suggestions.
-"""
-
-          print("Calling Gemini 2.5 Flash...")
-          try:
-              response = client.models.generate_content(
-                  model="models/gemini-2.5-flash",
-                  contents=prompt,
-                  config=types.GenerateContentConfig(
-                      temperature=0.2,
-                      max_output_tokens=8000,
+           A GitHub Actions workflow has failed. You are given:
+           1. The last {log_lines} lines of the full job log
+           2. All workflow YAML files in the repository
+           
+           Your tasks:
+           - Identify the exact root cause from the log
+           - Identify which workflow file is failing
+           - Return a corrected version of that workflow YAML
+           - Flag any other files (Dockerfile, package.json, requirements.txt etc.) that may also need changes
+           
+           ## Last {log_lines} lines of job log:
+           ```
+           {trimmed_log}
+           ```
+           
+           ## Current workflow files:
+           {workflow_context}
+           
+           Return ONLY a valid JSON object with exactly these keys. No markdown fences, no explanation outside the JSON:
+           {{
+             "failing_workflow_file": "filename only, e.g. build-b.yml",
+             "root_cause": "One paragraph — exact cause identified from the log",
+             "fix_summary": "What you changed in the YAML and why",
+             "fixed_yaml": "The complete corrected YAML as a string",
+             "other_file_suggestions": [
+               {{
+                 "file": "relative path e.g. Dockerfile",
+                 "issue": "what is wrong",
+                 "suggested_fix": "exact change to make"
+               }}
+             ],
+             "prevention": "How to prevent this class of failure in future"
+           }}
+           
+           If no other files need changes, return an empty array for other_file_suggestions.
+           """
+    
+              print("Calling Gemini 2.5 Flash...")
+              try:
+                  response = client.models.generate_content(
+                      model="models/gemini-2.5-flash",
+                      contents=prompt,
+                      config=types.GenerateContentConfig(
+                          temperature=0.2,
+                          max_output_tokens=8000,
+                      )
                   )
-              )
-              raw = response.text.strip()
-          except Exception as e:
-              print(f"Gemini API call failed: {e} — exiting silently")
-              sys.exit(0)
-
-          # Strip markdown fences if Gemini adds them anyway
-          if raw.startswith("```"):
-              raw = "\n".join(raw.split("\n")[1:])
-          if raw.endswith("```"):
-              raw = "\n".join(raw.split("\n")[:-1])
-          raw = raw.strip()
-
-          # ── STEP 4: Parse Gemini JSON ──────────────────────────────────────
-          try:
-              result = json.loads(raw)
-          except json.JSONDecodeError as e:
-              print(f"JSON parse failed: {e}")
-              print(f"Raw Gemini response (first 500 chars):\n{raw[:500]}")
-              print("Exiting silently.")
-              sys.exit(0)
-
-          print(f"\n===== ROOT CAUSE =====\n{result.get('root_cause', 'N/A')}")
-          print(f"\n===== FIX SUMMARY =====\n{result.get('fix_summary', 'N/A')}")
-
-          # ── STEP 5: Commit fixed YAML to new branch ────────────────────────
-          failing_file  = result.get("failing_workflow_file", "build-b.yml")
-          workflow_path = f".github/workflows/{failing_file}"
-          branch_name   = f"fix/ai-patch-{triggering_run_id}"
-
-          try:
-              subprocess.run(["git", "config", "user.email",
-                              "github-actions[bot]@users.noreply.github.com"], check=True)
-              subprocess.run(["git", "config", "user.name",
-                              "github-actions[bot]"], check=True)
-              subprocess.run(["git", "checkout", "-b", branch_name], check=True)
-
-              with open(workflow_path, "w") as f:
-                  f.write(result["fixed_yaml"])
-
-              subprocess.run(["git", "add", workflow_path], check=True)
-              subprocess.run(
-                  ["git", "commit", "-m",
-                   f"fix: AI patch for {failing_file} (run {triggering_run_id})"],
-                  check=True
-              )
-              subprocess.run(
-                  ["git", "push",
-                   f"https://x-access-token:{pat_token}@github.com/{repo}.git",
-                   branch_name],
-                  check=True
-              )
-              print(f"Branch pushed: {branch_name}")
-
-          except subprocess.CalledProcessError as e:
-              print(f"Git operation failed: {e}")
-              print("Exiting silently.")
-              sys.exit(0)
-
-          # ── STEP 6: Build PR body ──────────────────────────────────────────
-          other_suggestions = result.get("other_file_suggestions", [])
-          if other_suggestions:
-              other_section = "\n---\n\n### Other files that may also need changes\n\n"
-              for s in other_suggestions:
-                  other_section += (
-                      f"**`{s.get('file', 'unknown')}`**\n"
-                      f"- Issue: {s.get('issue', '')}\n"
-                      f"- Suggested fix: {s.get('suggested_fix', '')}\n\n"
+                  raw = response.text.strip()
+              except Exception as e:
+                  print(f"Gemini API call failed: {e} — exiting silently")
+                  sys.exit(0)
+    
+              # Strip markdown fences if Gemini adds them anyway
+              if raw.startswith("```"):
+                  raw = "\n".join(raw.split("\n")[1:])
+              if raw.endswith("```"):
+                  raw = "\n".join(raw.split("\n")[:-1])
+              raw = raw.strip()
+    
+              # ── STEP 4: Parse Gemini JSON ──────────────────────────────────────
+              try:
+                  result = json.loads(raw)
+              except json.JSONDecodeError as e:
+                  print(f"JSON parse failed: {e}")
+                  print(f"Raw Gemini response (first 500 chars):\n{raw[:500]}")
+                  print("Exiting silently.")
+                  sys.exit(0)
+    
+              print(f"\n===== ROOT CAUSE =====\n{result.get('root_cause', 'N/A')}")
+              print(f"\n===== FIX SUMMARY =====\n{result.get('fix_summary', 'N/A')}")
+    
+              # ── STEP 5: Commit fixed YAML to new branch ────────────────────────
+              failing_file  = result.get("failing_workflow_file", "build-b.yml")
+              workflow_path = f".github/workflows/{failing_file}"
+              branch_name   = f"fix/ai-patch-{triggering_run_id}"
+    
+              try:
+                  subprocess.run(["git", "config", "user.email",
+                                  "github-actions[bot]@users.noreply.github.com"], check=True)
+                  subprocess.run(["git", "config", "user.name",
+                                  "github-actions[bot]"], check=True)
+                  subprocess.run(["git", "checkout", "-b", branch_name], check=True)
+    
+                  with open(workflow_path, "w") as f:
+                      f.write(result["fixed_yaml"])
+    
+                  subprocess.run(["git", "add", workflow_path], check=True)
+                  subprocess.run(
+                      ["git", "commit", "-m",
+                       f"fix: AI patch for {failing_file} (run {triggering_run_id})"],
+                      check=True
                   )
-          else:
-              other_section = "\n---\n\n### Other files\nNo other files flagged by Gemini.\n"
-
-          pr_body = f"""## AI-generated fix — last {log_lines} log lines analysis
-
-**Triggering run:** [{triggering_run_id}](https://github.com/{repo}/actions/runs/{triggering_run_id})
-**Fixed file:** `{workflow_path}`
-**Fix branch:** `{branch_name}`
-
----
-
-### Root cause
-{result.get('root_cause', 'N/A')}
-
----
-
-### What was changed in the YAML
-{result.get('fix_summary', 'N/A')}
-{other_section}
----
-
-### How to prevent in future
-{result.get('prevention', 'N/A')}
-
----
-
-### Original error (stderr from build job)
-```
-{build_error[:800]}
-```
-
----
-> Generated by Gemini 2.5 Flash using the last {log_lines} lines of the Actions job log.
-> Review the diff carefully. **Merge to accept the fix. Close to reject.**
-"""
-
-          # ── STEP 7: Create Draft PR ────────────────────────────────────────
-          pr_resp = requests.post(
-              f"https://api.github.com/repos/{repo}/pulls",
-              headers=headers,
-              json={
-                  "title": f"[AI Fix] {failing_file} — run {triggering_run_id}",
-                  "body": pr_body,
-                  "head": branch_name,
-                  "base": "main",
-                  "draft": True
-              }
-          )
-
-          if pr_resp.status_code in (200, 201):
-              print(f"\n===== DRAFT PR CREATED =====\n{pr_resp.json()['html_url']}")
-          else:
-              print(f"PR creation failed ({pr_resp.status_code}): {pr_resp.text}")
-              print("Exiting silently.")
-
-          PYEOF
+                  subprocess.run(
+                      ["git", "push",
+                       f"https://x-access-token:{pat_token}@github.com/{repo}.git",
+                       branch_name],
+                      check=True
+                  )
+                  print(f"Branch pushed: {branch_name}")
+    
+              except subprocess.CalledProcessError as e:
+                  print(f"Git operation failed: {e}")
+                  print("Exiting silently.")
+                  sys.exit(0)
+    
+              # ── STEP 6: Build PR body ──────────────────────────────────────────
+              other_suggestions = result.get("other_file_suggestions", [])
+              if other_suggestions:
+                  other_section = "\n---\n\n### Other files that may also need changes\n\n"
+                  for s in other_suggestions:
+                      other_section += (
+                          f"**`{s.get('file', 'unknown')}`**\n"
+                          f"- Issue: {s.get('issue', '')}\n"
+                          f"- Suggested fix: {s.get('suggested_fix', '')}\n\n"
+                      )
+              else:
+                  other_section = "\n---\n\n### Other files\nNo other files flagged by Gemini.\n"
+    
+              pr_body = f"""## AI-generated fix — last {log_lines} log lines analysis
+    
+              **Triggering run:** [{triggering_run_id}](https://github.com/{repo}/actions/runs/{triggering_run_id})
+              **Fixed file:** `{workflow_path}`
+              **Fix branch:** `{branch_name}`
+              
+              ---
+              
+              ### Root cause
+              {result.get('root_cause', 'N/A')}
+              
+              ---
+              
+              ### What was changed in the YAML
+              {result.get('fix_summary', 'N/A')}
+              {other_section}
+              ---
+              
+              ### How to prevent in future
+              {result.get('prevention', 'N/A')}
+              
+              ---
+              
+              ### Original error (stderr from build job)
+              ```
+              {build_error[:800]}
+              ```
+              
+              ---
+              > Generated by Gemini 2.5 Flash using the last {log_lines} lines of the Actions job log.
+              > Review the diff carefully. **Merge to accept the fix. Close to reject.**
+              """
+              
+              # ── STEP 7: Create Draft PR ────────────────────────────────────────
+              pr_resp = requests.post(
+                  f"https://api.github.com/repos/{repo}/pulls",
+                  headers=headers,
+                  json={
+                      "title": f"[AI Fix] {failing_file} — run {triggering_run_id}",
+                      "body": pr_body,
+                      "head": branch_name,
+                      "base": "main",
+                      "draft": True
+                  }
+              )
+    
+              if pr_resp.status_code in (200, 201):
+                  print(f"\n===== DRAFT PR CREATED =====\n{pr_resp.json()['html_url']}")
+              else:
+                  print(f"PR creation failed ({pr_resp.status_code}): {pr_resp.text}")
+                  print("Exiting silently.")
+    
+              PYEOF
