@@ -1,5 +1,4 @@
-name: AI Self-Healing Pipeline
- 
+name: Build B
 on:
   workflow_call:
     inputs:
@@ -7,311 +6,59 @@ on:
         required: true
         type: string
     secrets:
+      personal_access_token:
+        required: false
       GOOGLE_AI_API_KEY:
         required: true
-  push:
-    branches:
-      - main
-
 jobs:
-  # ════════════════════════════════════════════════════════
-  # JOB 1 — Run the actual build, capture error if it fails
-  # ════════════════════════════════════════════════════════
-  build:
+  process-error:
     runs-on: ubuntu-latest
-    outputs:
-      build_failed: ${{ steps.capture.outputs.build_failed }}
-      error_msg:    ${{ steps.capture.outputs.error_msg }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Run Build
-        id: buildstep
+      - name: Print received error
         run: |
-          echo "Running build..."
-          invalidcommand123 2>error.txt || true
-        continue-on-error: true
-
-      - name: Capture error and set outputs
-        id: capture
-        run: |
-          if [ "${{ steps.buildstep.outcome }}" == "failure" ]; then
-            echo "build_failed=true" >> $GITHUB_OUTPUT
-            # Escape newlines so the multiline error fits into a single output value
-            ERROR=$(cat error.txt | jq -Rs .)
-            echo "error_msg=$ERROR" >> $GITHUB_OUTPUT
-            echo "Build failed — error captured"
-          else
-            echo "build_failed=false" >> $GITHUB_OUTPUT
-            echo "error_msg=" >> $GITHUB_OUTPUT
-            echo "Build succeeded"
-          fi
-
-  # ════════════════════════════════════════════════════════
-  # JOB 2 — AI fix: only runs when build job fails
-  # ════════════════════════════════════════════════════════
-  ai-fix:
-    runs-on: ubuntu-latest
-    needs: build
-    if: needs.build.outputs.build_failed == 'true'
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.PAT_TOKEN }}
-          fetch-depth: 0
-
+          echo "===== RECEIVED BUILD ERROR ====="
+          echo "${{ inputs.buildError }}"
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
       - name: Install dependencies
-        run: pip install google-genai requests
-
-      - name: Fetch log, analyze and fix via Gemini
+        run: pip install google-genai
+      - name: Send error to Gemini
         env:
           GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
-          PAT_TOKEN:         ${{ secrets.PAT_TOKEN }}
-          REPO:              ${{ github.repository }}
-          TRIGGERING_RUN_ID: ${{ github.run_id }}
-          BUILD_ERROR:       ${{ needs.build.outputs.error_msg }}
-          LOG_LINES:         "200"
+          BUILD_ERROR: ${{ inputs.buildError }}
         run: |
-          python - <<'PYEOF'
-          import os, json, zipfile, io, subprocess, requests, sys
-
-          pat_token         = os.environ["PAT_TOKEN"]
-          repo              = os.environ["REPO"]
-          triggering_run_id = os.environ["TRIGGERING_RUN_ID"]
-          build_error       = os.environ["BUILD_ERROR"]
-          api_key           = os.environ["GOOGLE_AI_API_KEY"]
-          log_lines         = int(os.environ["LOG_LINES"])
-
-          headers = {
-              "Authorization": f"Bearer {pat_token}",
-              "Accept": "application/vnd.github+json",
-              "X-GitHub-Api-Version": "2022-11-28"
-          }
-
-          # ── STEP 1: Fetch log ZIP, extract last N lines ────────────────────
-          print(f"Fetching logs for run: {triggering_run_id}")
-          trimmed_log = ""
-
-          try:
-              log_resp = requests.get(
-                  f"https://api.github.com/repos/{repo}/actions/runs/{triggering_run_id}/logs",
-                  headers=headers,
-                  allow_redirects=True
-              )
-              log_resp.raise_for_status()
-
-              zip_bytes = io.BytesIO(log_resp.content)
-              all_lines = []
-              with zipfile.ZipFile(zip_bytes) as zf:
-                  for name in sorted(zf.namelist()):
-                      if name.endswith(".txt"):
-                          with zf.open(name) as f:
-                              content = f.read().decode("utf-8", errors="replace")
-                              for line in content.splitlines():
-                                  all_lines.append(f"[{name}] {line}")
-
-              trimmed_log = "\n".join(all_lines[-log_lines:])
-              print(f"Log extracted — using last {log_lines} of {len(all_lines)} total lines")
-
-          except Exception as e:
-              print(f"Log fetch failed: {e} — using fallback stderr")
-              trimmed_log = f"[Log fetch failed: {e}]\n\nFallback stderr:\n{build_error}"
-
-          # ── STEP 2: Read all workflow YAML files ───────────────────────────
-          workflow_dir = ".github/workflows"
-          workflow_files = {}
-          for fname in os.listdir(workflow_dir):
-              if fname.endswith((".yml", ".yaml")):
-                  with open(os.path.join(workflow_dir, fname)) as f:
-                      workflow_files[fname] = f.read()
-
-          workflow_context = "\n\n".join(
-              f"### {name}\n```yaml\n{content}\n```"
-              for name, content in workflow_files.items()
-          )
-
-          # ── STEP 3: Call Gemini with log + YAML context ────────────────────
+          python - <<'EOF'
+          import os
           from google import genai
           from google.genai import types
 
-          client = genai.Client(api_key=api_key)
+          client = genai.Client(api_key=os.environ["GOOGLE_AI_API_KEY"])
 
-          prompt = f"""You are a senior DevOps and CI/CD engineer.
+          build_error = os.environ["BUILD_ERROR"]
 
-           A GitHub Actions workflow has failed. You are given:
-           1. The last {log_lines} lines of the full job log
-           2. All workflow YAML files in the repository
-           
-           Your tasks:
-           - Identify the exact root cause from the log
-           - Identify which workflow file is failing
-           - Return a corrected version of that workflow YAML
-           - Flag any other files (Dockerfile, package.json, requirements.txt etc.) that may also need changes
-           
-           ## Last {log_lines} lines of job log:
-           ```
-           {trimmed_log}
-           ```
-           
-           ## Current workflow files:
-           {workflow_context}
-           
-           Return ONLY a valid JSON object with exactly these keys. No markdown fences, no explanation outside the JSON:
-           {{
-             "failing_workflow_file": "filename only, e.g. build-b.yml",
-             "root_cause": "One paragraph — exact cause identified from the log",
-             "fix_summary": "What you changed in the YAML and why",
-             "fixed_yaml": "The complete corrected YAML as a string",
-             "other_file_suggestions": [
-               {{
-                 "file": "relative path e.g. Dockerfile",
-                 "issue": "what is wrong",
-                 "suggested_fix": "exact change to make"
-               }}
-             ],
-             "prevention": "How to prevent this class of failure in future"
-           }}
-           
-           If no other files need changes, return an empty array for other_file_suggestions.
-           """
-    
-              print("Calling Gemini 2.5 Flash...")
-              try:
-                  response = client.models.generate_content(
-                      model="models/gemini-2.5-flash",
-                      contents=prompt,
-                      config=types.GenerateContentConfig(
-                          temperature=0.2,
-                          max_output_tokens=8000,
-                      )
-                  )
-                  raw = response.text.strip()
-              except Exception as e:
-                  print(f"Gemini API call failed: {e} — exiting silently")
-                  sys.exit(0)
-    
-              # Strip markdown fences if Gemini adds them anyway
-              if raw.startswith("```"):
-                  raw = "\n".join(raw.split("\n")[1:])
-              if raw.endswith("```"):
-                  raw = "\n".join(raw.split("\n")[:-1])
-              raw = raw.strip()
-    
-              # ── STEP 4: Parse Gemini JSON ──────────────────────────────────────
-              try:
-                  result = json.loads(raw)
-              except json.JSONDecodeError as e:
-                  print(f"JSON parse failed: {e}")
-                  print(f"Raw Gemini response (first 500 chars):\n{raw[:500]}")
-                  print("Exiting silently.")
-                  sys.exit(0)
-    
-              print(f"\n===== ROOT CAUSE =====\n{result.get('root_cause', 'N/A')}")
-              print(f"\n===== FIX SUMMARY =====\n{result.get('fix_summary', 'N/A')}")
-    
-              # ── STEP 5: Commit fixed YAML to new branch ────────────────────────
-              failing_file  = result.get("failing_workflow_file", "build-b.yml")
-              workflow_path = f".github/workflows/{failing_file}"
-              branch_name   = f"fix/ai-patch-{triggering_run_id}"
-    
-              try:
-                  subprocess.run(["git", "config", "user.email",
-                                  "github-actions[bot]@users.noreply.github.com"], check=True)
-                  subprocess.run(["git", "config", "user.name",
-                                  "github-actions[bot]"], check=True)
-                  subprocess.run(["git", "checkout", "-b", branch_name], check=True)
-    
-                  with open(workflow_path, "w") as f:
-                      f.write(result["fixed_yaml"])
-    
-                  subprocess.run(["git", "add", workflow_path], check=True)
-                  subprocess.run(
-                      ["git", "commit", "-m",
-                       f"fix: AI patch for {failing_file} (run {triggering_run_id})"],
-                      check=True
-                  )
-                  subprocess.run(
-                      ["git", "push",
-                       f"https://x-access-token:{pat_token}@github.com/{repo}.git",
-                       branch_name],
-                      check=True
-                  )
-                  print(f"Branch pushed: {branch_name}")
-    
-              except subprocess.CalledProcessError as e:
-                  print(f"Git operation failed: {e}")
-                  print("Exiting silently.")
-                  sys.exit(0)
-    
-              # ── STEP 6: Build PR body ──────────────────────────────────────────
-              other_suggestions = result.get("other_file_suggestions", [])
-              if other_suggestions:
-                  other_section = "\n---\n\n### Other files that may also need changes\n\n"
-                  for s in other_suggestions:
-                      other_section += (
-                          f"**`{s.get('file', 'unknown')}`**\n"
-                          f"- Issue: {s.get('issue', '')}\n"
-                          f"- Suggested fix: {s.get('suggested_fix', '')}\n\n"
-                      )
-              else:
-                  other_section = "\n---\n\n### Other files\nNo other files flagged by Gemini.\n"
-    
-              pr_body = f"""## AI-generated fix — last {log_lines} log lines analysis
-    
-              **Triggering run:** [{triggering_run_id}](https://github.com/{repo}/actions/runs/{triggering_run_id})
-              **Fixed file:** `{workflow_path}`
-              **Fix branch:** `{branch_name}`
-              
-              ---
-              
-              ### Root cause
-              {result.get('root_cause', 'N/A')}
-              
-              ---
-              
-              ### What was changed in the YAML
-              {result.get('fix_summary', 'N/A')}
-              {other_section}
-              ---
-              
-              ### How to prevent in future
-              {result.get('prevention', 'N/A')}
-              
-              ---
-              
-              ### Original error (stderr from build job)
-              ```
-              {build_error[:800]}
-              ```
-              
-              ---
-              > Generated by Gemini 2.5 Flash using the last {log_lines} lines of the Actions job log.
-              > Review the diff carefully. **Merge to accept the fix. Close to reject.**
-              """
-              
-              # ── STEP 7: Create Draft PR ────────────────────────────────────────
-              pr_resp = requests.post(
-                  f"https://api.github.com/repos/{repo}/pulls",
-                  headers=headers,
-                  json={
-                      "title": f"[AI Fix] {failing_file} — run {triggering_run_id}",
-                      "body": pr_body,
-                      "head": branch_name,
-                      "base": "main",
-                      "draft": True
-                  }
+          prompt = f"""You are a senior DevOps and software engineer assistant.
+          Analyze the following CI/CD build error and provide:
+          1. Root cause analysis
+          2. Step-by-step fix
+          3. How to prevent it in future
+
+          Build Error:
+          {build_error}
+          """
+
+          print("Sending error to Gemini for analysis...")
+
+          response = client.models.generate_content(
+              model="models/gemini-2.5-flash",
+              contents=prompt,
+              config=types.GenerateContentConfig(
+                  temperature=0.3,
+                  max_output_tokens=15000,
               )
-    
-              if pr_resp.status_code in (200, 201):
-                  print(f"\n===== DRAFT PR CREATED =====\n{pr_resp.json()['html_url']}")
-              else:
-                  print(f"PR creation failed ({pr_resp.status_code}): {pr_resp.text}")
-                  print("Exiting silently.")
-    
-              PYEOF
+          )
+
+          print("\n===== AI AGENT RESPONSE =====")
+          print(response.text)
+          EOF
