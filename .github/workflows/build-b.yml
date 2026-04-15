@@ -45,50 +45,54 @@ jobs:
       # ✅ 6. Send Workflow + Error to AI
       - name: Generate Fix using AI
         id: gemini
+        env:
+            GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}   # ✅ ADD THIS
+            BUILD_ERROR: ${{ inputs.buildError }}
+            CURRENT_WORKFLOW: ${{ steps.read_yaml.outputs.workflow }}
         run: |
-          python - <<'EOF'
-          import os, json, re
-          from google import genai
-          
-          client = genai.Client(api_key=os.environ["GOOGLE_AI_API_KEY"])
-          
-          error = os.environ["BUILD_ERROR"]
-          workflow = os.environ["CURRENT_WORKFLOW"]
-          
-          prompt = f"""
-          You are a senior DevOps AI.
-          
-          Return ONLY JSON:
-          {{
-            "fixed_workflow": "<FULL FIXED YAML>",
-            "commit_message": "fix: <short message>"
-          }}
-          
-          CURRENT WORKFLOW:
-          {workflow}
-          
-          ERROR:
-          {error}
-          """
-          
-          response = client.models.generate_content(
-              model="models/gemini-2.5-flash",
-              contents=prompt
-          )
-          
-          text = response.text
-          
-          match = re.search(r'\{.*\}', text, re.DOTALL)
-          if not match:
-              raise Exception("No JSON found")
-          
-          data = json.loads(match.group(0))
-          
-          with open("ai_fix.json", "w") as f:
-              json.dump(data, f, indent=2)
-          
-          print("✅ AI response saved")
-          EOF
+            python - <<'EOF'
+            import os, json, re
+            from google import genai
+    
+            client = genai.Client(api_key=os.environ["GOOGLE_AI_API_KEY"])
+            
+            error = os.environ["BUILD_ERROR"]
+            workflow = os.environ["CURRENT_WORKFLOW"]
+            
+            prompt = f"""
+            You are a senior DevOps AI.
+            
+            Return ONLY JSON:
+            {{
+              "fixed_workflow": "<FULL FIXED YAML>",
+              "commit_message": "fix: <short message>"
+            }}
+            
+            CURRENT WORKFLOW:
+            {workflow}
+            
+            ERROR:
+            {error}
+            """
+            
+            response = client.models.generate_content(
+                model="models/gemini-2.5-flash",
+                contents=prompt
+            )
+            
+            text = response.text
+            
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if not match:
+                raise Exception("No JSON found")
+            
+            data = json.loads(match.group(0))
+            
+            with open("ai_fix.json", "w") as f:
+                json.dump(data, f, indent=2)
+            
+            print("✅ AI response saved")
+            EOF
       - name: Apply AI Fix
         run: |
           python - <<'EOF'
