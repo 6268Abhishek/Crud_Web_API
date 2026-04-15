@@ -22,7 +22,8 @@ jobs:
       # ✅ 2. Setup Git Auth (for push)
       - name: Setup Git Auth
         run: |
-         git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}
+          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}
+     
       # ✅ 3. Read Current Workflow
       - name: Read Current Workflow
         id: read_yaml
