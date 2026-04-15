@@ -107,6 +107,40 @@ jobs:
           git commit -m "AI Fix"
       - name: Push Branch
         run: |
-          git push origin ai-fix-${{ github.run_id }}
+         git push origin ai-fix-${{ github.run_id }}
+      - name: Trigger CI on Fix Branch
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/dotnet.yaml/dispatches \
+            -d '{"ref":"ai-fix-${{ github.run_id }}"}'
+      - name: Wait for CI
+        run: sleep 60
+
+      - name: Check CI Status
+        id: check
+        run: |
+          STATUS=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/runs \
+            | jq -r '.workflow_runs[0].conclusion')
+      
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        if: steps.check.outputs.status == 'success'
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/pulls \
+            -d '{
+              "title": "AI Fix for CI Failure",
+              "head": "ai-fix-${{ github.run_id }}",
+              "base": "master",
+              "body": "Auto-generated fix after successful CI"
+            }'
+                
 
  
