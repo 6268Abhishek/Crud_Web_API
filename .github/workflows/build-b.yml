@@ -77,3 +77,27 @@ jobs:
           
               print("✅ AI response saved")
               EOF
+      
+      
+      - name: Apply AI Fix
+        run: |
+          python - <<'EOF'
+          import json, os
+          with open("ai_fix.json") as f:
+              data = json.load(f)
+          for file in data["files_to_modify"]:
+              path = file["file_path"]
+              content = file["content"]
+
+              print(f"Updating {path}")      
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+
+              with open(path, "w") as f:
+                  f.write(content)      
+          print("✅ Fix applied")
+          EOF
+
+
+
+
+ 
