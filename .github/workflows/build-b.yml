@@ -45,10 +45,6 @@ jobs:
       # ✅ 6. Send Workflow + Error to AI
       - name: Generate Fix using AI
         id: gemini
-        env:
-          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
-          BUILD_ERROR: ${{ inputs.buildError }}
-          CURRENT_WORKFLOW: ${{ steps.read_yaml.outputs.workflow }}
         run: |
           python - <<'EOF'
           import os, json, re
@@ -62,21 +58,11 @@ jobs:
           prompt = f"""
           You are a senior DevOps AI.
           
-          Fix the GitHub Actions workflow.
-          
           Return ONLY JSON:
-          
           {{
             "fixed_workflow": "<FULL FIXED YAML>",
             "commit_message": "fix: <short message>"
           }}
-          
-          Rules:
-          - Keep structure clean
-          - Remove irrelevant steps (like Maven if not needed)
-          - Ensure YAML is valid
-          - Return FULL corrected workflow
-          - DO NOT explain anything
           
           CURRENT WORKFLOW:
           {workflow}
@@ -103,11 +89,9 @@ jobs:
           
           print("✅ AI response saved")
           EOF
-          
-                # ✅ 7. Apply AI Fix (Replace Workflow)
-                - name: Apply AI Fix
-                  run: |
-                    python - <<'EOF'
+      - name: Apply AI Fix
+        run: |
+          python - <<'EOF'
           import json
           
           with open("ai_fix.json") as f:
@@ -115,12 +99,11 @@ jobs:
           
           workflow = data["fixed_workflow"]
           
-          with open(".github/workflows/dotnet.yaml", "w") as f:
+          with open(".github/workflows/dotnet.yml", "w") as f:
               f.write(workflow)
           
           print("✅ Workflow updated")
           EOF
-
       # ✅ 8. Create Branch
       - name: Create Branch
         run: git checkout -b ai-fix-${{ github.run_id }}
