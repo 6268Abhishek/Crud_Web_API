@@ -25,32 +25,24 @@ jobs:
       - name: Install dependencies
         run: pip install google-genai
       - name: Send error to Gemini
+        id: gemini
         env:
           GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
           BUILD_ERROR: ${{ inputs.buildError }}
         run: |
           python - <<'EOF'
-          import os
+          import os, json, re
           from google import genai
-          from google.genai import types
-
           client = genai.Client(api_key=os.environ["GOOGLE_AI_API_KEY"])
-
           build_error = os.environ["BUILD_ERROR"]
-
           prompt = f"""
-          You are an autonomous DevOps AI agent.
+          You are an autonomous DevOps AI.
+          Return ONLY JSON:
           
-          Your job is to FIX the CI/CD pipeline.
-          
-          Return ONLY valid JSON. No explanation.
-          
-          Format:
           {{
             "files_to_modify": [
               {{
                 "file_path": ".github/workflows/dotnet.yaml",
-                "change_type": "replace",
                 "content": "<FULL UPDATED FILE CONTENT>"
               }}
             ],
@@ -58,26 +50,30 @@ jobs:
           }}
           
           Rules:
-          - Modify ONLY necessary files
-          - Keep changes minimal
-          - Output complete file content (not diff)
-          - Ensure YAML is valid
+          - Output ONLY JSON
+          - No explanation
+          - Ensure valid YAML
           
-          Error লগ:
+          Error:
           {build_error}
           """
-
-          print("Sending error to Gemini for analysis...")
-
-          response = client.models.generate_content(
-              model="models/gemini-2.5-flash",
-              contents=prompt,
-              config=types.GenerateContentConfig(
-                  temperature=0.3,
-                  max_output_tokens=15000,
+          
+              response = client.models.generate_content(
+                  model="models/gemini-2.5-flash",
+                  contents=prompt
               )
-          )
-
-          print("\n===== AI AGENT RESPONSE =====")
-          print(response.text)
-          EOF
+          
+              text = response.text
+          
+              # Extract JSON safely
+              match = re.search(r'\{.*\}', text, re.DOTALL)
+              if not match:
+                  raise Exception("No JSON found")
+          
+              data = json.loads(match.group(0))
+          
+              with open("ai_fix.json", "w") as f:
+                  json.dump(data, f, indent=2)
+          
+              print("✅ AI response saved")
+              EOF
