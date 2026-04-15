@@ -1,4 +1,5 @@
-name: Build B
+name: Build B (AI Fix Pipeline)
+
 on:
   workflow_call:
     inputs:
@@ -6,59 +7,82 @@ on:
         required: true
         type: string
     secrets:
-      personal_access_token:
-        required: false
       GOOGLE_AI_API_KEY:
         required: true
+
 jobs:
   process-error:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Print received error
+      # ✅ 1. Checkout Repo
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ✅ 2. Setup Git Auth (for push)
+      - name: Setup Git Auth
         run: |
-          echo "===== RECEIVED BUILD ERROR ====="
-          echo "${{ inputs.buildError }}"
+          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      # ✅ 3. Read Current Workflow
+      - name: Read Current Workflow
+        id: read_yaml
+        run: |
+          echo "workflow<<EOF" >> $GITHUB_OUTPUT
+          cat .github/workflows/dotnet.yaml >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # ✅ 4. Setup Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-      - name: Install dependencies
+
+      # ✅ 5. Install AI SDK
+      - name: Install Dependencies
         run: pip install google-genai
-      - name: Send error to Gemini
+
+      # ✅ 6. Send Workflow + Error to AI
+      - name: Generate Fix using AI
         id: gemini
         env:
           GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
           BUILD_ERROR: ${{ inputs.buildError }}
+          CURRENT_WORKFLOW: ${{ steps.read_yaml.outputs.workflow }}
         run: |
           python - <<'EOF'
           import os, json, re
           from google import genai
           
           client = genai.Client(api_key=os.environ["GOOGLE_AI_API_KEY"])
-          build_error = os.environ["BUILD_ERROR"]
+          
+          error = os.environ["BUILD_ERROR"]
+          workflow = os.environ["CURRENT_WORKFLOW"]
           
           prompt = f"""
-          You are an autonomous DevOps AI.
+          You are a senior DevOps AI.
+          
+          Fix the GitHub Actions workflow.
           
           Return ONLY JSON:
           
           {{
-            "files_to_modify": [
-              {{
-                "file_path": ".github/workflows/dotnet.yaml",
-                "content": "<FULL UPDATED FILE CONTENT>"
-              }}
-            ],
+            "fixed_workflow": "<FULL FIXED YAML>",
             "commit_message": "fix: <short message>"
           }}
           
           Rules:
-          - Output ONLY JSON
-          - No explanation
-          - Ensure valid YAML
+          - Keep structure clean
+          - Remove irrelevant steps (like Maven if not needed)
+          - Ensure YAML is valid
+          - Return FULL corrected workflow
+          - DO NOT explain anything
           
-          Error:
-          {build_error}
+          CURRENT WORKFLOW:
+          {workflow}
+          
+          ERROR:
+          {error}
           """
           
           response = client.models.generate_content(
@@ -79,46 +103,54 @@ jobs:
           
           print("✅ AI response saved")
           EOF
-      
-      - name: Apply AI Fix
-        run: |
-          python - <<'EOF'
-          import json, os
+          
+                # ✅ 7. Apply AI Fix (Replace Workflow)
+                - name: Apply AI Fix
+                  run: |
+                    python - <<'EOF'
+          import json
+          
           with open("ai_fix.json") as f:
               data = json.load(f)
-          for file in data["files_to_modify"]:
-              path = file["file_path"]
-              content = file["content"]
-
-              print(f"Updating {path}")      
-              os.makedirs(os.path.dirname(path), exist_ok=True)
-
-              with open(path, "w") as f:
-                  f.write(content)      
-          print("✅ Fix applied")
+          
+          workflow = data["fixed_workflow"]
+          
+          with open(".github/workflows/dotnet.yaml", "w") as f:
+              f.write(workflow)
+          
+          print("✅ Workflow updated")
           EOF
+
+      # ✅ 8. Create Branch
       - name: Create Branch
-        run: |
-          git checkout -b ai-fix-${{ github.run_id }}
+        run: git checkout -b ai-fix-${{ github.run_id }}
+
+      # ✅ 9. Commit Changes
       - name: Commit Changes
         run: |
           git config user.name "ai-bot"
           git config user.email "ai@bot.com"
           git add .
-          git commit -m "AI Fix"
+          git commit -m "AI Fix: CI failure"
+
+      # ✅ 10. Push Branch
       - name: Push Branch
-        run: |
-         git push origin ai-fix-${{ github.run_id }}
-      - name: Trigger CI on Fix Branch
+        run: git push origin ai-fix-${{ github.run_id }}
+
+      # ✅ 11. Trigger Workflow on New Branch
+      - name: Trigger CI
         run: |
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/dotnet.yaml/dispatches \
-            -d '{"ref":"ai-fix-${{ github.run_id }}"}'
+            -d "{\"ref\":\"ai-fix-${{ github.run_id }}\"}"
+
+      # ✅ 12. Wait for CI
       - name: Wait for CI
         run: sleep 60
 
+      # ✅ 13. Check CI Status
       - name: Check CI Status
         id: check
         run: |
@@ -126,9 +158,10 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/actions/runs \
             | jq -r '.workflow_runs[0].conclusion')
-      
+
           echo "status=$STATUS" >> $GITHUB_OUTPUT
 
+      # ✅ 14. Create PR if Success
       - name: Create Pull Request
         if: steps.check.outputs.status == 'success'
         run: |
@@ -140,8 +173,5 @@ jobs:
               "title": "AI Fix for CI Failure",
               "head": "ai-fix-${{ github.run_id }}",
               "base": "master",
-              "body": "Auto-generated fix after successful CI"
+              "body": "Auto-generated fix after successful CI validation"
             }'
-                
-
- 
