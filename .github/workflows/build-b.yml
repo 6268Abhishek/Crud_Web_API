@@ -23,7 +23,9 @@ jobs:
       - name: Setup Git Auth
         run: |
           git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}
-     
+
+      - name: Debug Remote
+        run: git remote -v     
       # ✅ 3. Read Current Workflow
       - name: Read Current Workflow
         id: read_yaml
