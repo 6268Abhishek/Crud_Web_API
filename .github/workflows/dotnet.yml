@@ -1,9 +1,10 @@
 name: .NET CI
-on: 
+on:
   push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+    branches:
+      - master
+      - Test
+      - ai-fix-*
         
 jobs:
   build:
