@@ -22,8 +22,8 @@ jobs:
       # ✅ 2. Setup Git Auth (for push)
       - name: Setup Git Auth
         run: |
-          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
-
+         git config --global url."https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/".insteadOf "https://github.com/"
+     
       # ✅ 3. Read Current Workflow
       - name: Read Current Workflow
         id: read_yaml
