@@ -96,8 +96,17 @@ jobs:
                   f.write(content)      
           print("✅ Fix applied")
           EOF
-
-
-
+      - name: Create Branch
+        run: |
+          git checkout -b ai-fix-${{ github.run_id }}
+      - name: Commit Changes
+        run: |
+          git config user.name "ai-bot"
+          git config user.email "ai@bot.com"
+          git add .
+          git commit -m "AI Fix"
+      - name: Push Branch
+        run: |
+          git push origin ai-fix-${{ github.run_id }}
 
  
