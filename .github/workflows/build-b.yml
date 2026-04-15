@@ -33,10 +33,13 @@ jobs:
           python - <<'EOF'
           import os, json, re
           from google import genai
+          
           client = genai.Client(api_key=os.environ["GOOGLE_AI_API_KEY"])
           build_error = os.environ["BUILD_ERROR"]
+          
           prompt = f"""
           You are an autonomous DevOps AI.
+          
           Return ONLY JSON:
           
           {{
@@ -58,26 +61,24 @@ jobs:
           {build_error}
           """
           
-              response = client.models.generate_content(
-                  model="models/gemini-2.5-flash",
-                  contents=prompt
-              )
+          response = client.models.generate_content(
+              model="models/gemini-2.5-flash",
+              contents=prompt
+          )
           
-              text = response.text
+          text = response.text
           
-              # Extract JSON safely
-              match = re.search(r'\{.*\}', text, re.DOTALL)
-              if not match:
-                  raise Exception("No JSON found")
+          match = re.search(r'\{.*\}', text, re.DOTALL)
+          if not match:
+              raise Exception("No JSON found")
           
-              data = json.loads(match.group(0))
+          data = json.loads(match.group(0))
           
-              with open("ai_fix.json", "w") as f:
-                  json.dump(data, f, indent=2)
+          with open("ai_fix.json", "w") as f:
+              json.dump(data, f, indent=2)
           
-              print("✅ AI response saved")
-              EOF
-      
+          print("✅ AI response saved")
+          EOF
       
       - name: Apply AI Fix
         run: |
