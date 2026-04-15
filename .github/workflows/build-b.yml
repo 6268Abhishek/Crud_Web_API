@@ -38,13 +38,32 @@ jobs:
 
           build_error = os.environ["BUILD_ERROR"]
 
-          prompt = f"""You are a senior DevOps and software engineer assistant.
-          Analyze the following CI/CD build error and provide:
-          1. Root cause analysis
-          2. Step-by-step fix
-          3. How to prevent it in future
-
-          Build Error:
+          prompt = f"""
+          You are an autonomous DevOps AI agent.
+          
+          Your job is to FIX the CI/CD pipeline.
+          
+          Return ONLY valid JSON. No explanation.
+          
+          Format:
+          {{
+            "files_to_modify": [
+              {{
+                "file_path": ".github/workflows/dotnet.yaml",
+                "change_type": "replace",
+                "content": "<FULL UPDATED FILE CONTENT>"
+              }}
+            ],
+            "commit_message": "fix: <short message>"
+          }}
+          
+          Rules:
+          - Modify ONLY necessary files
+          - Keep changes minimal
+          - Output complete file content (not diff)
+          - Ensure YAML is valid
+          
+          Error লগ:
           {build_error}
           """
 
