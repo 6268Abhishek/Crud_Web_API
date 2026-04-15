@@ -8,6 +8,7 @@ on:
         
 jobs:
   build:
+    if: "!contains(github.ref, 'ai-fix')" 
     runs-on: ubuntu-latest
     outputs:
       error_output: ${{ steps.read_error.outputs.error_content }}
@@ -73,7 +74,7 @@ jobs:
   reusable_workflow_job:
     needs: build
     if: ${{ needs.build.outputs.error_output != 'No errors' }}
-    uses: 6268Abhishek/Crud_Web_API/.github/workflows/build-b.yml@master
+    uses: 6268Abhishek/Crud_Web_API/.github/workflows/build-b.yml@Test
     with:
       buildError: ${{ needs.build.outputs.error_output }}
     secrets:
